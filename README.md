@@ -1,23 +1,36 @@
 C Smart Pointers
 ================
 
+[![Build Status](https://travis-ci.org/Snaipe/libcsptr.svg?branch=master)](https://travis-ci.org/Snaipe/libcsptr) 
+[![Coverage Status](https://coveralls.io/repos/Snaipe/libcsptr/badge.svg?branch=master)](https://coveralls.io/r/Snaipe/libcsptr?branch=master) 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](https://github.com/Snaipe/libcsptr/blob/master/LICENSE) 
+[![Version](https://img.shields.io/github/tag/Snaipe/libcsptr.svg?label=version&style=flat)](https://github.com/Snaipe/libcsptr/releases)
+
 ## What this is
 
 This project is a tentative attempt to bring smart pointer constructs
 to the (GNU) C programming language.
 
+### Features
+
 * `unique_ptr`, `shared_ptr` macros, and `smart` type attribute
 * Destructor support for cleanup
 * Custom variable metadata on allocation
+* Cross-platform: tested under linux 3.18.6-1, Mac OS X Yosemite 10.10, and Windows 7 (with MinGW and the Cygwin port of GCC)
 
 ## Installing
 
-### Prerequisites
+### With a package manager
 
-* To compile the library, GCC 4.9+ is needed.
-* To compile any project with the library, Clang or GCC are needed.
+* Mac OS X: `brew install snaipe/soft/libcsptr`
+* [AUR](https://aur.archlinux.org/packages/libcsptr-git/): `yaourt -S libcsptr`
 
-### Installation
+### Building from source
+#### Prerequisites
+
+To compile the library, GCC 4.9+ is needed.
+
+#### Installation
 
 1. Clone this repository
 2. run `./autogen.sh && ./configure --prefix=$HOME/ && make && make install`
@@ -34,8 +47,8 @@ to the (GNU) C programming language.
     #include <csptr/smart_ptr.h>
 
     int main(void) {
-        smart int *some_int = unique_ptr(int);
-        *some_int = 1;
+        // some_int is an unique_ptr to an int with a value of 1.
+        smart int *some_int = unique_ptr(int, 1);
 
         printf("%p = %d\n", some_int, *some_int);
 
@@ -80,10 +93,10 @@ to the (GNU) C programming language.
     }
 
     int main(void) {
-        smart struct log_file *log = unique_ptr(struct log_file, cleanup_log_file);
-        *log = (struct log_file) {
-            .fd = open("/dev/null", O_WRONLY | O_APPEND)
-        };
+        smart struct log_file *log = unique_ptr(struct log_file, {
+                .fd = open("/dev/null", O_WRONLY | O_APPEND),
+                // ...
+            }, cleanup_log_file);
 
         write(log->fd, "Hello", 5);
 
@@ -107,15 +120,15 @@ to the (GNU) C programming language.
     int main(void) {
         // Destructors for array types are run on every element of the
         // array before destruction.
-        smart int *ints = unique_ptr(int[10], print_int);
+        smart int *ints = unique_ptr(int[5], {5, 4, 3, 2, 1}, print_int);
+        // ints == {5, 4, 3, 2, 1}
 
         // Smart arrays are length-aware
         for (size_t i = 0; i < array_length(ints); ++i) {
-            ints[i] = i;
+            ints[i] = i + 1;
         }
+        // ints == {1, 2, 3, 4, 5}
 
-        // Not initializing the array before getting out of scope
-        // is undefined behavior: beware !
         return 0;
     }
     ```
@@ -155,7 +168,7 @@ to the (GNU) C programming language.
     }
 
     struct log_file *open_log(const char *path) {
-        smart struct log_file *log = shared_ptr(struct log_file, close_log);
+        smart struct log_file *log = shared_ptr(struct log_file, {0}, close_log);
         if (!log) // failure to allocate
             return NULL; // nothing happens, destructor is not called
 
@@ -172,36 +185,22 @@ to the (GNU) C programming language.
         return 0; // file descriptor is closed, log is freed
     }
     ```
-* Destructor macro helper:
+* Using named parameters:
     ```c
     #include <csptr/smart_ptr.h>
 
-    typedef struct {
-        // ...
-    } A;
-
-    typedef struct {
-        // ...
-    } B;
-
-    typedef struct {
-        A *a;
-        int some_int;
-        B *b;
-    } C;
-
-    DESTRUCTOR(destroy_c, static, a, b) {
-        printf("some_int = %d at destruction.\n", ptr->some_int); // why not ?
-    }
+    void nothing(void *ptr, void *meta) {}
 
     int main(void) {
-        smart C *c = unique_ptr(C, destroy_c);
-        *c = (C) {
-            .a = unique_ptr(A),
-            .b = unique_ptr(B),
-            .some_int = 42
-        };
-        return 0; // c->a, c->b, and c are freed
+        struct { int a; } m = { 1 };
+
+        smart int *i = unique_ptr(int,
+                .dtor = nothing,
+                .value = 42,
+                .meta = { &m, sizeof (m) }
+            );
+
+        return 0;
     }
     ```
 
@@ -212,7 +211,8 @@ A. Because when I first started this, I was working on a C project.
    Also, because it's fun.
 
 **Q. Can I use this on a serious project ?**  
-A. Yes, but the project has yet to fully mature, beware of bugs!
+A. Yes, but as this project has not been widely used, there might be
+   some bugs. Beware!
 
 **Q. How did you make this ?**  
 A. Here's a [link to my blog post](http://snaipe.me/c/c-smart-pointers/) on the matter.

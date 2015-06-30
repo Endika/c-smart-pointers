@@ -1,5 +1,9 @@
 ACLOCAL_AMFLAGS = -I m4
 
+if ENABLE_TESTS
+SUBDIRS = check
+endif
+
 lib_LTLIBRARIES = libcsptr.la
 
 WARNINGS = -Wall -Wextra \
@@ -8,22 +12,23 @@ WARNINGS = -Wall -Wextra \
 libcsptr_la_CFLAGS = \
 	$(WARNINGS) \
 	-std=gnu11 \
-	-fplan9-extensions
+	-fplan9-extensions \
+	-I$(top_srcdir)/include/csptr/ \
+	$(COVERAGE_CFLAGS)
 
-libcsptr_la_LDFLAGS = $(FLAG_WRAP_MALLOC)
+libcsptr_la_LDFLAGS = $(COVERAGE_LDFLAGS) -version-info 1:0:0
 
 EXTRA_DIST = LICENSE README.md
 
 subdirincludedir = $(includedir)/csptr/
 subdirinclude_HEADERS = \
-	src/vararg.h \
-	src/apply.h \
-	src/mman.h \
-	src/array.h \
-	src/smart_ptr.h
+	include/csptr/config.h \
+	include/csptr/smalloc.h \
+	include/csptr/array.h \
+	include/csptr/smart_ptr.h
 
 libcsptr_la_SOURCES = \
-	src/mman.c \
-	src/wrap_malloc.c
+	src/mman.h \
+	src/mman.c
 
-man3_MANS = doc/csptr.3
+dist_man3_MANS = doc/csptr.3

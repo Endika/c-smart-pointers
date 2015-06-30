@@ -22,34 +22,63 @@
  * THE SOFTWARE.
  */
 
-#ifndef CSPTR_MMAN_H_
-# define CSPTR_MMAN_H_
+#ifndef CSPTR_SMALLOC_H_
+# define CSPTR_SMALLOC_H_
 
-# include "smalloc.h"
+# include <stdlib.h>
 
-# define INLINE __attribute__ ((always_inline)) inline
+# ifndef CSPTR_CONFIG_H_
+#  define CSPTR_CONFIG_H_
+#  include "config.h"
+# endif
+
+# ifdef CSPTR_NO_SENTINEL
+#  ifndef __GNUC__
+#   error Variadic structure sentinels can only be disabled on a compiler supporting GNU extensions
+#  endif
+#  define CSPTR_SENTINEL
+#  define CSPTR_SENTINEL_DEC
+# else
+#  define CSPTR_SENTINEL        .sentinel_ = 0,
+#  define CSPTR_SENTINEL_DEC int sentinel_;
+# endif
+
+enum pointer_kind {
+    UNIQUE,
+    SHARED,
+
+    ARRAY = 1 << 8
+};
+
+typedef void (*f_destructor)(void *, void *);
 
 typedef struct {
+    void *(*alloc)(size_t);
+    void (*dealloc)(void *);
+} s_allocator;
+
+extern s_allocator smalloc_allocator;
+
+typedef struct {
+    CSPTR_SENTINEL_DEC
+    size_t size;
+    size_t nmemb;
     enum pointer_kind kind;
     f_destructor dtor;
-#ifndef NDEBUG
-    void *ptr;
-#endif /* !NDEBUG */
-} s_meta;
-
-typedef struct {
-    s_meta;
-    size_t ref_count;
-} s_meta_shared;
-
-INLINE size_t align(size_t s) {
-    return (s + (sizeof (void *) - 1)) & ~(sizeof (void *) - 1);
-}
+    struct {
+        const void *data;
+        size_t size;
+    } meta;
+} s_smalloc_args;
 
 __attribute__ ((pure))
-INLINE s_meta *get_meta(void *ptr) {
-    size_t *size = (size_t *) ptr - 1;
-    return (s_meta *) ((char *) size - *size);
-}
+void *get_smart_ptr_meta(void *ptr);
+void *sref(void *ptr);
+__attribute__((malloc))
+void *smalloc(s_smalloc_args *args);
+void sfree(void *ptr);
 
-#endif /* !CSPTR_MMAN_H_ */
+#  define smalloc(...) \
+    smalloc(&(s_smalloc_args) { CSPTR_SENTINEL __VA_ARGS__ })
+
+#endif /* !CSPTR_SMALLOC_H_ */
