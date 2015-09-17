@@ -27,8 +27,6 @@
 
 # include "smalloc.h"
 
-# define INLINE __attribute__ ((always_inline)) inline
-
 typedef struct {
     enum pointer_kind kind;
     f_destructor dtor;
@@ -38,16 +36,19 @@ typedef struct {
 } s_meta;
 
 typedef struct {
-    s_meta;
-    size_t ref_count;
+    enum pointer_kind kind;
+    f_destructor dtor;
+#ifndef NDEBUG
+    void *ptr;
+#endif /* !NDEBUG */
+    volatile size_t ref_count;
 } s_meta_shared;
 
-INLINE size_t align(size_t s) {
-    return (s + (sizeof (void *) - 1)) & ~(sizeof (void *) - 1);
+CSPTR_INLINE size_t align(size_t s) {
+    return (s + (sizeof (char *) - 1)) & ~(sizeof (char *) - 1);
 }
 
-__attribute__ ((pure))
-INLINE s_meta *get_meta(void *ptr) {
+CSPTR_PURE CSPTR_INLINE s_meta *get_meta(void *ptr) {
     size_t *size = (size_t *) ptr - 1;
     return (s_meta *) ((char *) size - *size);
 }

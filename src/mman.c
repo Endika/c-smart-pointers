@@ -34,8 +34,13 @@
 
 s_allocator smalloc_allocator = {malloc, free};
 
-__attribute__ ((always_inline))
-static inline size_t atomic_add(size_t *count, const size_t limit, const size_t val) {
+#ifdef _MSC_VER
+# include <windows.h>
+# include <malloc.h>
+#endif
+
+#ifndef _MSC_VER
+static CSPTR_INLINE size_t atomic_add(volatile size_t *count, const size_t limit, const size_t val) {
     size_t old_count, new_count;
     do {
       old_count = *count;
@@ -45,19 +50,25 @@ static inline size_t atomic_add(size_t *count, const size_t limit, const size_t 
     } while (!__sync_bool_compare_and_swap(count, old_count, new_count));
     return new_count;
 }
+#endif
 
-__attribute__ ((always_inline))
-static inline size_t atomic_increment(size_t *count) {
+static CSPTR_INLINE size_t atomic_increment(volatile size_t *count) {
+#ifdef _MSC_VER
+    return InterlockedIncrement64(count);
+#else
     return atomic_add(count, SIZE_MAX, 1);
+#endif
 }
 
-__attribute__ ((always_inline))
-static inline size_t atomic_decrement(size_t *count) {
+static CSPTR_INLINE size_t atomic_decrement(volatile size_t *count) {
+#ifdef _MSC_VER
+    return InterlockedDecrement64(count);
+#else
     return atomic_add(count, 0, -1);
+#endif
 }
 
-__attribute__ ((pure))
-void *get_smart_ptr_meta(void *ptr) {
+CSPTR_INLINE void *get_smart_ptr_meta(void *ptr) {
     assert((size_t) ptr == align((size_t) ptr));
 
     s_meta *meta = get_meta(ptr);
@@ -79,8 +90,8 @@ void *sref(void *ptr) {
     return ptr;
 }
 
-__attribute__ ((malloc))
-INLINE static void *alloc_entry(size_t head, size_t size, size_t metasize) {
+CSPTR_MALLOC_API
+CSPTR_INLINE static void *alloc_entry(size_t head, size_t size, size_t metasize) {
     const size_t totalsize = head + size + metasize + sizeof (size_t);
 #ifdef SMALLOC_FIXED_ALLOCATOR
     return malloc(totalsize);
@@ -89,13 +100,13 @@ INLINE static void *alloc_entry(size_t head, size_t size, size_t metasize) {
 #endif /* !SMALLOC_FIXED_ALLOCATOR */
 }
 
-INLINE static void dealloc_entry(s_meta *meta, void *ptr) {
+CSPTR_INLINE static void dealloc_entry(s_meta *meta, void *ptr) {
     if (meta->dtor) {
         void *user_meta = get_smart_ptr_meta(ptr);
         if (meta->kind & ARRAY) {
             s_meta_array *arr_meta = (void *) (meta + 1);
             for (size_t i = 0; i < arr_meta->nmemb; ++i)
-                meta->dtor(ptr + arr_meta->size * i, user_meta);
+                meta->dtor((char *) ptr + arr_meta->size * i, user_meta);
         } else
             meta->dtor(ptr, user_meta);
     }
@@ -107,7 +118,7 @@ INLINE static void dealloc_entry(s_meta *meta, void *ptr) {
 #endif /* !SMALLOC_FIXED_ALLOCATOR */
 }
 
-__attribute__ ((malloc))
+CSPTR_MALLOC_API
 static void *smalloc_impl(s_smalloc_args *args) {
     if (!args->size)
         return NULL;
@@ -142,9 +153,14 @@ static void *smalloc_impl(s_smalloc_args *args) {
     return sz + 1;
 }
 
-__attribute__ ((malloc))
-INLINE static void *smalloc_array(s_smalloc_args *args) {
-    char new_meta[align(args->meta.size + sizeof(s_meta_array))];
+CSPTR_MALLOC_API
+CSPTR_INLINE static void *smalloc_array(s_smalloc_args *args) {
+    const size_t size = align(args->meta.size + sizeof(s_meta_array));
+#ifdef _MSC_VER
+    char *new_meta = _alloca(size);
+#else
+    char new_meta[size];
+#endif
     s_meta_array *arr_meta = (void *) new_meta;
     *arr_meta = (s_meta_array) {
         .size = args->size,
@@ -155,11 +171,11 @@ INLINE static void *smalloc_array(s_smalloc_args *args) {
             .size = args->nmemb * args->size,
             .kind = args->kind | ARRAY,
             .dtor = args->dtor,
-            .meta = { &new_meta, sizeof (new_meta) },
+            .meta = { &new_meta, size },
         });
 }
 
-__attribute__ ((malloc))
+CSPTR_MALLOC_API
 void *smalloc(s_smalloc_args *args) {
     return (args->nmemb == 0 ? smalloc_impl : smalloc_array)(args);
 }
